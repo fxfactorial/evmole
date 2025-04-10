@@ -10,14 +10,14 @@ pub use contract_info::{Contract, ContractInfoArgs, Function};
 pub use storage::StorageRecord;
 
 mod arguments;
+mod collections;
 mod contract_info;
+pub mod control_flow_graph;
 mod evm;
 mod selectors;
 mod state_mutability;
 mod storage;
 mod utils;
-mod collections;
-pub mod control_flow_graph;
 
 #[cfg(feature = "serde")]
 mod serialize;
@@ -39,3 +39,6 @@ mod interface_py;
 
 #[cfg(feature = "javascript")]
 mod interface_js;
+
+#[cfg(feature = "golang")]
+mod interface_golang;
