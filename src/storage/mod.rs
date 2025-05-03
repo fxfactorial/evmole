@@ -2,16 +2,13 @@
 //! This code is in an experimental state and under active development.
 //! Code structure are subject to change.
 use crate::{
-    evm::{
-        calldata::CallDataLabel,
+    collections::HashMap, evm::{
+        calldata::{CallDataLabel, CallDataLabelType},
         element::Element,
         op,
         vm::{StepResult, Vm},
         U256, VAL_1, VAL_1_B, VAL_32_B,
-    },
-    collections::HashMap,
-    utils::{and_mask_to_type, elabel, execute_until_function_start, match_first_two},
-    DynSolType, Selector, Slot,
+    }, utils::{and_mask_to_type, elabel, execute_until_function_start, match_first_two}, DynSolType, Selector, Slot
 };
 use std::{
     cell::RefCell,
@@ -19,7 +16,7 @@ use std::{
     rc::Rc,
 };
 
-mod calldata;
+pub(crate) mod calldata;
 use calldata::CallDataImpl;
 
 mod keccak_precalc;
@@ -59,8 +56,12 @@ enum Label {
 }
 
 impl CallDataLabel for Label {
-    fn label(_: usize, tp: &DynSolType) -> Label {
-        Label::Typed(tp.clone())
+    fn label(_: usize, tp: &DynSolType, label_type: CallDataLabelType) -> Option<Label> {
+        if matches!(label_type, CallDataLabelType::RealValue) {
+            Some(Label::Typed(tp.clone()))
+        } else {
+            None
+        }
     }
 }
 
@@ -97,7 +98,7 @@ impl StorageType {
             return;
         }
         match self {
-            StorageType::Base(DynSolType::Array(ref mut v)) => {
+            StorageType::Base(DynSolType::Array(v)) => {
                 let mut current = v.as_mut();
                 while let DynSolType::Array(inner) = current {
                     current = inner;
@@ -105,8 +106,8 @@ impl StorageType {
                 }
                 *current = tp;
             }
-            StorageType::Base(ref mut v) => *v = tp,
-            StorageType::Map(_, ref mut v) => v.set_type(tp),
+            StorageType::Base(v) => *v = tp,
+            StorageType::Map(_, v) => v.set_type(tp),
         }
     }
 

@@ -1,5 +1,5 @@
-use super::{calldata::CallData, element::Element, memory::Memory, op, stack::Stack, I256, U256};
-use super::{VAL_0_B, VAL_1, VAL_1024_B, VAL_1M_B, VAL_1_B, VAL_256, VAL_32};
+use super::{I256, U256, calldata::CallData, element::Element, memory::Memory, op, stack::Stack};
+use super::{VAL_0_B, VAL_1, VAL_1_B, VAL_1M_B, VAL_32, VAL_256, VAL_1024_B};
 use std::{error, fmt};
 
 #[derive(Debug)]
@@ -212,7 +212,9 @@ where
                     if s1.is_zero() {
                         U256::ZERO
                     } else {
-                        (I256::from_raw(s0) / I256::from_raw(s1)).into_raw()
+                        I256::from_raw(s0)
+                            .wrapping_div(I256::from_raw(s1))
+                            .into_raw()
                     },
                 )
             }),
@@ -360,11 +362,7 @@ where
             op::KECCAK256 => {
                 let offset = self.stack.pop()?;
                 let size = self.stack.pop()?;
-                let gas_used: u32 = 30
-                    + 6 * (U256::from_be_bytes(size.data)
-                        .try_into()
-                        .unwrap_or(5_000_000));
-                let mut ret = StepResult::new(op, gas_used);
+                let mut ret = StepResult::new(op, 30 + 6 * 32);
                 ret.args[0] = offset;
                 ret.args[1] = size;
                 self.stack.push_data(VAL_1_B);
@@ -522,7 +520,13 @@ where
                 let off: u32 = s0.try_into()?;
                 let (val, _used) = self.memory.load_element(off);
                 let mut ret = StepResult::new(op, 4);
-                ret.exargs = _used.into_iter().map(|lb| Element{data: [0;32], label: Some(lb)}).collect();
+                ret.exargs = _used
+                    .into_iter()
+                    .map(|lb| Element {
+                        data: [0; 32],
+                        label: Some(lb),
+                    })
+                    .collect();
                 self.stack.push(val);
                 ret.args[0] = raws0;
                 Ok(ret)
@@ -578,7 +582,7 @@ where
                 };
                 self.memory.store(dest_offset, data, label);
 
-                let gas_used: u32 = 3 + 3 * ((size + 31) / 32);
+                let gas_used: u32 = 3 + 3 * size.div_ceil(32);
                 Ok(StepResult::new(op, gas_used))
             }
 
@@ -614,25 +618,30 @@ where
             op::CALL | op::CALLCODE | op::DELEGATECALL | op::STATICCALL => {
                 let mut ret = StepResult::new(op, 100);
 
-                let _gas = self.stack.pop()?;
+                let gas = self.stack.pop()?;
                 let address = self.stack.pop()?;
                 let p2 = self.stack.pop()?;
                 let p3 = self.stack.pop()?;
                 let p4 = self.stack.pop()?;
-                self.stack.pop()?;
+                let p5 = self.stack.pop()?;
 
-                ret.exargs.reserve(2);
+                ret.exargs.reserve(5);
+                ret.exargs.push(gas);
 
                 ret.args[0] = address;
                 if op == op::CALL || op == op::CALLCODE {
-                    self.stack.pop()?;
+                    let p6 = self.stack.pop()?;
                     ret.args[1] = p2; // value
                     ret.exargs.push(p3); // args offset
-                    ret.exargs.push(p4); // args offset
+                    ret.exargs.push(p4); // args size
+                    ret.exargs.push(p5); // ret offset
+                    ret.exargs.push(p6); // ret size
                 } else {
                     // args[1] (value) is alredy set to zero
                     ret.exargs.push(p2); // args offset
-                    ret.exargs.push(p3); // args offset
+                    ret.exargs.push(p3); // args size
+                    ret.exargs.push(p4); // ret offset
+                    ret.exargs.push(p5); // ret size
                 }
 
                 self.stack.push_data(VAL_1_B); // success
@@ -721,6 +730,18 @@ mod tests {
                 op::SDIV,
                 I256::unchecked_from(-2).into_raw(),
                 U256::from(2),
+            ),
+            (
+                I256::MIN.into_raw(),
+                op::SDIV,
+                I256::unchecked_from(-1).into_raw(),
+                I256::MIN.into_raw(),
+            ),
+            (
+                I256::unchecked_from(-4).into_raw(),
+                op::SDIV,
+                U256::ZERO,
+                U256::ZERO,
             ),
         ];
 
