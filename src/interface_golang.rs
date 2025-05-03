@@ -1,9 +1,9 @@
-use alloy_primitives::{hex, Selector};
+use alloy_primitives::{Selector, hex};
 use serde_json;
 use std::ffi::CStr;
 use std::ffi::CString;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn produce_selectors(message: *const libc::c_char) -> *const libc::c_char {
     let message_cstr = unsafe { CStr::from_ptr(message) };
     let message = message_cstr.to_str().unwrap();
